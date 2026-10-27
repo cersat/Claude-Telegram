@@ -1,0 +1,21 @@
+# ШАБЛОН. Обычно юнит создаёт install.py сам (под текущего пользователя и путь). Вручную: замените YOUR_USER
+# и пути, затем sudo cp в /etc/systemd/system/claude-telegram.service && sudo systemctl enable --now claude-telegram
+[Unit]
+Description=Claude Telegram Bot
+After=network-online.target docker.service
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=YOUR_USER
+WorkingDirectory=/home/YOUR_USER/telegram_bridge
+ExecStart=/usr/bin/python3 /home/YOUR_USER/telegram_bridge/bot.py
+Restart=always
+RestartSec=10
+Environment=HOME=/home/YOUR_USER
+Environment=PYTHONUNBUFFERED=1
+StandardOutput=append:/home/YOUR_USER/telegram_bridge/bot.log
+StandardError=append:/home/YOUR_USER/telegram_bridge/bot.log
+
+[Install]
+WantedBy=multi-user.target

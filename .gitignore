@@ -1,0 +1,37 @@
+# Белый список: по умолчанию игнорируем ВСЁ, затем явно разрешаем только
+# файлы, из которых реально состоит бот. Это осознанно вместо чёрного списка —
+# рабочее состояние/секреты/мусор не может случайно попасть в git, даже если
+# новый файл появится и его забудут сюда добавить.
+#
+# ВАЖНО: при добавлении нового файла бота (новый .py-модуль, MCP-коннектор,
+# ассет и т.п.) — обязательно добавь сюда строку !имя_файла, иначе он не
+# попадёт в git вообще.
+*
+
+!.gitignore
+!bot.py
+!bridge/
+!bridge/*.py
+!auto_respond.py
+!bot_scheduler_mcp_server.py
+!config.py
+!fill_kabuddi.py
+!history_mcp_server.py
+!inject_inbox.py
+!memory_mcp_server.py
+!memory_store.py
+!moltbook_mcp_server.py
+!telegram_mcp_server.py
+!scheduled_jobs_store.py
+!send.py
+!send_json.py
+!send_response.py
+!claude-telegram.service
+!install.py
+!requirements.txt
+!botapi/
+!botapi/run.sh
+!botapi/server.env.example
+!botapi/README.md
+!README.md
+!LICENSE
