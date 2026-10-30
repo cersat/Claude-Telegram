@@ -35,6 +35,18 @@ MODEL_LABELS = {
     "haiku": "Haiku",
 }
 
+def get_settings_text():
+    """Текст экрана «⚙️ Настройки Claude» (один на все места, где он показывается)."""
+    s = storage.load_settings()
+    style_label = "Подробный" if s["style"] == "detailed" else "Краткий"
+    model_label = MODEL_LABELS.get(s.get("model", "sonnet"), s.get("model", "?"))
+    perm_label = "спрашивать" if s.get("permissions", "allow_all") == "ask" else "разрешать всё"
+    return (f"⚙️ *Настройки Claude*\n\n"
+            f"✍️ Стиль: `{style_label}`\n"
+            f"🤖 Модель: `{model_label}`\n"
+            f"🔐 Права: `{perm_label}`")
+
+
 def get_settings_inline():
     s = storage.load_settings()
     style = s["style"]
@@ -47,6 +59,12 @@ def get_settings_inline():
         mark = " ✓" if model == mid else ""
         return {"text": f"{label}{mark}", "callback_data": f"settings_model_{mid}"}
 
+    perm = s.get("permissions", "allow_all")
+
+    def perm_btn(mode, label):
+        mark = " ✓" if perm == mode else ""
+        return {"text": f"{label}{mark}", "callback_data": f"settings_perm_{mode}"}
+
     return {
         "inline_keyboard": [
             [{"text": f"Стиль: {style_label}", "callback_data": "settings_noop"},
@@ -54,6 +72,7 @@ def get_settings_inline():
             [{"text": "🤖 Модель:", "callback_data": "settings_noop"}],
             [model_btn("fable", "Fable"), model_btn("sonnet", "Sonnet")],
             [model_btn("opus", "Opus"), model_btn("haiku", "Haiku")],
+            [perm_btn("allow_all", "✅ Разрешать всё"), perm_btn("ask", "🔐 Спрашивать")],
             [{"text": "🗑 Очистить историю", "callback_data": "settings_clear_history"}],
         ]
     }

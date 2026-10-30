@@ -263,6 +263,30 @@ def _run_telegram_action(name, ti, chat_id, thread_id, react_target, turn_state)
         print(f"[tg_action] неизвестное действие: {name}")
 
 
+# tool_use_id -> карточка вызова (chat_id, message_id, full_key): по нему bridge/permui.py находит карточку,
+# на которую надо повесить кнопки разрешения
+_cards = {}
+_cards_lock = threading.Lock()
+
+
+def register_card(tool_use_id, chat_id, mid, full_key):
+    with _cards_lock:
+        _cards[tool_use_id] = {"chat_id": chat_id, "mid": mid, "full_key": full_key}
+        if len(_cards) > 300:
+            for k in list(_cards)[:len(_cards) - 300]:
+                del _cards[k]
+
+
+def forget_card(tool_use_id):
+    with _cards_lock:
+        _cards.pop(tool_use_id, None)
+
+
+def find_card(tool_use_id):
+    with _cards_lock:
+        return dict(_cards[tool_use_id]) if tool_use_id in _cards else None
+
+
 def make_stream_handler(chat_id, thread_id, placeholder_id=None, react_target=None, turn_state=None):
     """Строит on_event-колбэк для ask_claude: каждый вызов инструмента и каждый
     промежуточный текстовый блок уходит отдельным сообщением в чат (а не правит
@@ -293,7 +317,9 @@ def make_stream_handler(chat_id, thread_id, placeholder_id=None, react_target=No
             if mid and payload.get("id"):
                 tool_msgs[payload["id"]] = {"mid": mid, "label": label, "full_key": full_key}
                 _set_card_text(chat_id, mid, label)
+                register_card(payload["id"], chat_id, mid, full_key)
         elif kind == "tool_done":
+            forget_card(payload.get("id"))
             entry = tool_msgs.pop(payload.get("id"), None)
             if entry:
                 mid, label, full_key = entry["mid"], entry["label"], entry["full_key"]

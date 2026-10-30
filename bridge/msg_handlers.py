@@ -744,14 +744,7 @@ def handle_message(msg):
 
     if original_text == "⚙️ Настройки":
         menu_key = (tgt_chat_id, tgt_thread_id)
-        s = storage.load_settings()
-        style_label = "Подробный" if s["style"] == "detailed" else "Краткий"
-        model_label = keyboards.MODEL_LABELS.get(s.get("model", "sonnet"), s.get("model", "?"))
-        settings_text = (
-            f"⚙️ *Настройки Claude*\n\n"
-            f"✍️ Стиль: `{style_label}`\n"
-            f"🤖 Модель: `{model_label}`"
-        )
+        settings_text = keyboards.get_settings_text()
         existing = shared.settings_msg_ids.get(menu_key)
         if existing:
             r = requests.post(f"{core.API}/editMessageText", json={

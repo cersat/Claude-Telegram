@@ -14,6 +14,19 @@ STOPPED_SENTINEL = "🛑 Остановлено пользователем."
 AUTH_FAILED = "__auth_failed__"  # run_claude_turn вернул это, если ход не состоялся из-за ошибки входа
 
 
+def permission_flags():
+    """Флаги прав для claude -p по настройке «permissions» (⚙️ Настройки), читается при каждом запуске.
+    allow_all — --dangerously-skip-permissions (разрешено всё, как раньше).
+    ask — всё, чего нет в CLAUDE_ALLOWED_TOOLS, Claude отдаёт тулу mcp__perm__approve, а тот спрашивает владельца
+    кнопками в Telegram. --setting-sources project,local: пользовательский ~/.claude/settings.json пропускаем — в нём
+    у многих разрешено всё (Bash(*), Edit(*)…) и вопросы просто не возникали бы; MCP-коннекторы живут в local-источнике."""
+    if storage.load_settings().get("permissions", "allow_all") != "ask":
+        return ["--dangerously-skip-permissions"]
+    return ["--setting-sources", "project,local",
+            "--permission-prompt-tool", "mcp__perm__approve",
+            "--allowedTools=" + ",".join(consts.CLAUDE_ALLOWED_TOOLS)]
+
+
 def run_claude_streaming(cmd, on_event=None, proc_key=None, extra_env=None):
     """Запускает claude с --output-format stream-json и разбирает поток событий live.
     on_event(kind, payload) вызывается по мере поступления:
@@ -199,7 +212,7 @@ def ask_claude(user_message, image_path=None, reply_to=None, on_event=None, topi
                 prompt_text = f"Пользователь [{now}]: {effective_message}"
             prompt_text = prompting.prompt_update_note(topic_id) + prompt_text
             cmd = [
-                consts.CLAUDE_BIN, "--dangerously-skip-permissions",
+                consts.CLAUDE_BIN, *permission_flags(),
                 "--model", model, *stream_flags,
                 "--resume", session_id,
                 "-p", prompt_text
@@ -209,14 +222,14 @@ def ask_claude(user_message, image_path=None, reply_to=None, on_event=None, topi
             prompt = prompting.build_prompt(effective_message, reply_to=reply_to, topic_id=topic_id)
             if session_id:
                 cmd = [
-                    consts.CLAUDE_BIN, "--dangerously-skip-permissions",
+                    consts.CLAUDE_BIN, *permission_flags(),
                     "--model", model, *stream_flags,
                     "--session-id", session_id,
                     "-p", prompt
                 ]
             else:
                 cmd = [
-                    consts.CLAUDE_BIN, "--dangerously-skip-permissions",
+                    consts.CLAUDE_BIN, *permission_flags(),
                     "--model", model, *stream_flags,
                     "-p", prompt
                 ]
@@ -234,7 +247,7 @@ def ask_claude(user_message, image_path=None, reply_to=None, on_event=None, topi
             storage.save_topic_sessions(sessions)
             prompt = prompting.build_prompt(effective_message, reply_to=reply_to, topic_id=topic_id)
             cmd = [
-                consts.CLAUDE_BIN, "--dangerously-skip-permissions",
+                consts.CLAUDE_BIN, *permission_flags(),
                 "--model", model, *stream_flags,
                 "--session-id", new_sid,
                 "-p", prompt

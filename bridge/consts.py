@@ -57,3 +57,11 @@ except ImportError:
 BOT_API_LOCAL = BOT_API_BASE != "https://api.telegram.org"
 BOT_API_CONTAINER_DIR = "/var/lib/telegram-bot-api"                      # где сервер хранит файлы внутри контейнера
 BOT_API_DATA_DIR = os.path.expanduser("~/telegram_bot_api/data")         # то же место на хосте
+
+# Разрешения на вызов инструментов (см. permission_mcp_server.py): запросы и решения обмениваются файлами
+PERM_DIR = os.path.join(BRIDGE_DIR, "perm_requests")
+PERM_RULES_FILE = os.path.join(BRIDGE_DIR, "permission_rules.json")  # «всегда разрешать» (не для Bash)
+# Что Claude делает без вопроса. Всё остальное (Bash, Write, Edit, WebFetch, коннекторы claude.ai…) идёт на
+# подтверждение владельцу кнопками в чате. Bash(true) — разделитель сообщений, коннекторы бота — свои.
+CLAUDE_ALLOWED_TOOLS = ["Read", "Glob", "Grep", "Bash(true)", "mcp__memory", "mcp__history", "mcp__moltbook",
+                        "mcp__bot_scheduler", "mcp__telegram", "mcp__perm"]

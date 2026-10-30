@@ -173,7 +173,7 @@ def get_usage_text():
     try:
         model = storage.load_settings().get("model", "sonnet")
         result = subprocess.run(
-            [consts.CLAUDE_BIN, "--dangerously-skip-permissions",
+            [consts.CLAUDE_BIN,
              "--model", model, "-p", "/usage"],
             capture_output=True, text=True, timeout=20,
             env={**os.environ, "HOME": consts.HOME}

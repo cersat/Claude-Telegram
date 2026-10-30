@@ -22,6 +22,7 @@
 !memory_store.py
 !moltbook_mcp_server.py
 !telegram_mcp_server.py
+!permission_mcp_server.py
 !scheduled_jobs_store.py
 !send.py
 !send_json.py

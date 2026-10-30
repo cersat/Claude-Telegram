@@ -405,6 +405,7 @@ WantedBy=multi-user.target
             "moltbook": "moltbook_mcp_server.py",
             "bot_scheduler": "bot_scheduler_mcp_server.py",
             "telegram": "telegram_mcp_server.py",
+            "perm": "permission_mcp_server.py",
         }
         for name, script in connectors.items():
             subprocess.run([claude_cmd, "mcp", "remove", name], capture_output=True)

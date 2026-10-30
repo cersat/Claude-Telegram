@@ -50,6 +50,9 @@ DEFAULT_SETTINGS = {
     # "sonnet"/"opus"/"haiku"/"fable" — алиасы claude CLI, сами резолвятся в последнюю
     # версию модели (не нужно вручную обновлять при выходе новых версий).
     "model": "sonnet",
+    # "allow_all" — claude запускается с --dangerously-skip-permissions (как раньше), "ask" — вызовы Bash/Write/Edit и т.п.
+    # согласуются с владельцем кнопками в чате (см. permission_mcp_server.py). Меняется в ⚙️ Настройки, без перезапуска.
+    "permissions": "allow_all",
 }
 
 def load_settings():

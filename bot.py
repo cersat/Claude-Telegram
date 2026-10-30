@@ -15,7 +15,7 @@ import json
 import signal
 from secrets_local import GROUP_CHAT_ID
 import memory_store
-from bridge import cb_handlers, claude_run, consts, core, dnscache, keyboards, lifecycle, logstamp, msg_handlers, pollstats, reminders, storage, tgapi, upd_handlers
+from bridge import cb_handlers, claude_run, consts, core, dnscache, keyboards, lifecycle, logstamp, msg_handlers, permui, pollstats, reminders, storage, tgapi, upd_handlers
 
 
 def main():
@@ -38,6 +38,7 @@ def main():
     reminders.seed_free_time_job()
     threading.Thread(target=reminders.reminder_loop, daemon=True).start()
     threading.Thread(target=reminders.scheduler_loop, daemon=True).start()
+    threading.Thread(target=permui.watch_loop, daemon=True).start()  # кнопки разрешений на карточках вызовов
 
     # Проверяем предыдущее завершение — нештатный перезапуск?
     was_unclean, prev_shutdown_time = lifecycle.check_previous_shutdown()

@@ -10,6 +10,63 @@ from secrets_local import ALLOWED_USER_ID
 from bridge import cardview, chessgame, claude_run, consts, core, keyboards, mdfmt, memui, procs, reminders, shared, storage, sysinfo, tgapi
 
 
+def _handle_permission(cq, data, cq_id, chat_id, msg_id):
+    """a — разрешить, d — запретить, r — разрешить и запомнить инструмент (кроме Bash). Решение кладётся файлом
+    для MCP-сервера, который ждёт его; сообщение правится без кнопок. Нет файла запроса — он уже истёк."""
+    import json as _json
+    try:
+        _, rid, action = data.split("_", 2)
+    except ValueError:
+        tgapi.answer_callback(cq_id, "Непонятная кнопка")
+        return
+    req_path = os.path.join(consts.PERM_DIR, f"{rid}.req")
+    dec_path = os.path.join(consts.PERM_DIR, f"{rid}.decision")
+    shown = cq.get("message", {}).get("text", "")
+    rest = shown.split("\n", 1)[1] if "\n" in shown else ""
+    standalone = shown.startswith("🔐")  # отдельное сообщение-запасной вариант; иначе кнопки висят на карточке вызова
+
+    def _edit(title):
+        if standalone:
+            requests.post(f"{core.API}/editMessageText", json={
+                "chat_id": chat_id, "message_id": msg_id, "text": (title + ("\n" + rest if rest else ""))[:4000]
+            }, timeout=10)
+            return
+        # карточка: текст не трогаем (там уже команда), убираем только строки разрешения — кнопки раскрытия остаются;
+        # итог ✅/⚠️ карточка получит сама, когда инструмент отработает
+        rows = [r for r in cq.get("message", {}).get("reply_markup", {}).get("inline_keyboard", [])
+                if not any(str(b.get("callback_data", "")).startswith("perm_") for b in r)]
+        requests.post(f"{core.API}/editMessageReplyMarkup", json={
+            "chat_id": chat_id, "message_id": msg_id, "reply_markup": {"inline_keyboard": rows}}, timeout=10)
+
+    if not (rid.isalnum() and os.path.exists(req_path)):
+        tgapi.answer_callback(cq_id, "Запрос уже устарел")
+        _edit("⌛ Запрос устарел (время вышло или Claude остановлен)")
+        return
+    try:
+        with open(req_path) as f:
+            tool = _json.load(f).get("tool", "?")
+    except Exception:
+        tool = "?"
+    allow = action in ("a", "r")
+    if action == "r" and tool != "Bash":
+        try:
+            with open(consts.PERM_RULES_FILE) as f:
+                rules = _json.load(f)
+        except Exception:
+            rules = {}
+        tools = set(rules.get("tools", []))
+        tools.add(tool)
+        rules["tools"] = sorted(tools)
+        with open(consts.PERM_RULES_FILE, "w") as f:
+            _json.dump(rules, f, ensure_ascii=False, indent=2)
+    tmp = dec_path + ".tmp"
+    with open(tmp, "w") as f:
+        _json.dump({"allow": allow, "always": action == "r"}, f)
+    os.replace(tmp, dec_path)  # атомарно: MCP-сервер не должен прочитать недописанный файл
+    tgapi.answer_callback(cq_id, "Разрешено" if allow else "Запрещено")
+    _edit(("♾ Разрешено и запомнено" if action == "r" else "✅ Разрешено") if allow else "❌ Запрещено")
+
+
 def handle_callback_safe(cq):
     """Обёртка над handle_callback: логирует каждое нажатие, время обработки и исключения
     (раньше сбой кнопки не оставлял в логе никаких следов)."""
@@ -44,6 +101,11 @@ def handle_callback(cq):
     msg_id = cq["message"]["message_id"]
     cq_chat_id = cq["message"]["chat"]["id"]
     cq_thread_id = cq["message"].get("message_thread_id")
+
+    if data.startswith("perm_"):
+        # Ответ на вопрос «Разрешить вызов?» от permission_mcp_server.py: perm_<id>_a|d|r
+        _handle_permission(cq, data, cq_id, cq_chat_id, msg_id)
+        return
 
     if data.startswith("rvl_"):
         # Кнопки "Полное сообщение"/"Посмотреть текст" под карточками live-стрима —
@@ -96,14 +158,7 @@ def handle_callback(cq):
         elif section == "power":
             shared.power_msg_ids[(cq_chat_id, cq_thread_id)] = tgapi.send_message("🔌 Управление питанием:", keyboards.POWER_INLINE, chat_id=cq_chat_id, thread_id=cq_thread_id)
         elif section == "settings":
-            s = storage.load_settings()
-            style_label = "Подробный" if s["style"] == "detailed" else "Краткий"
-            model_label = keyboards.MODEL_LABELS.get(s.get("model", "sonnet"), s.get("model", "?"))
-            settings_text = (
-                f"⚙️ *Настройки Claude*\n\n"
-                f"✍️ Стиль: `{style_label}`\n"
-                f"🤖 Модель: `{model_label}`"
-            )
+            settings_text = keyboards.get_settings_text()
             shared.settings_msg_ids[(cq_chat_id, cq_thread_id)] = tgapi.send_single(settings_text, keyboards.get_settings_inline(), chat_id=cq_chat_id, thread_id=cq_thread_id)
         elif section == "memory":
             def _send_picker(_cid=cq_chat_id, _tid=cq_thread_id):
@@ -493,6 +548,10 @@ def handle_callback(cq):
         elif data == "settings_clear_history":
             storage.reset_history(claude_run.chat_thread_to_topic_id(cq_chat_id, cq_thread_id))
             tgapi.answer_callback(cq_id, "История очищена")
+        elif data in ("settings_perm_allow_all", "settings_perm_ask"):
+            s["permissions"] = "ask" if data.endswith("_ask") else "allow_all"
+            storage.save_settings(s)
+            tgapi.answer_callback(cq_id, "Права: спрашивать" if s["permissions"] == "ask" else "Права: разрешать всё")
         elif data == "style_brief":
             s["style"] = "brief"
             storage.save_settings(s)
@@ -522,13 +581,7 @@ def handle_callback(cq):
             tgapi.answer_callback(cq_id)
             return
 
-        style_label = "Подробный" if s["style"] == "detailed" else "Краткий"
-        model_label = keyboards.MODEL_LABELS.get(s.get("model", "sonnet"), s.get("model", "?"))
-        settings_text = (
-            f"⚙️ *Настройки Claude*\n\n"
-            f"✍️ Стиль: `{style_label}`\n"
-            f"🤖 Модель: `{model_label}`"
-        )
+        settings_text = keyboards.get_settings_text()
         requests.post(f"{core.API}/editMessageText", json={
             "chat_id": cq_chat_id,
             "message_id": msg_id,
