@@ -37,7 +37,6 @@ TOPIC_SESSIONS_FILE = os.path.join(BRIDGE_DIR, "topic_sessions.json")
 LAST_MSG_FILE = os.path.join(BRIDGE_DIR, "last_message_ids.json")
 MAX_HISTORY = 20
 
-os.makedirs(TOPIC_HISTORY_DIR, exist_ok=True)
 os.makedirs(INBOX_DIR, exist_ok=True)
 PROMPT_VERSIONS_FILE = os.path.join(BRIDGE_DIR, "topic_prompt_versions.json")
 
@@ -65,3 +64,37 @@ PERM_RULES_FILE = os.path.join(BRIDGE_DIR, "permission_rules.json")  # «все�
 # подтверждение владельцу кнопками в чате. Bash(true) — разделитель сообщений, коннекторы бота — свои.
 CLAUDE_ALLOWED_TOOLS = ["Read", "Glob", "Grep", "Bash(true)", "mcp__memory", "mcp__history", "mcp__moltbook",
                         "mcp__bot_scheduler", "mcp__telegram", "mcp__perm"]
+
+# ── История из Telegram вместо файлов (bridge/tghistory.py) ──
+HISTORY_INDEX_FILE = os.path.join(BRIDGE_DIR, "history_index.json")      # только id сообщений по темам (тексты — в Telegram)
+HISTORY_CUTOFF_FILE = os.path.join(BRIDGE_DIR, "history_cutoff.json")   # «Очистить историю» = запомнить id, раньше которого не читаем
+
+
+def telegram_api_credentials():
+    """(api_id, api_hash) с my.telegram.org: из secrets_local.py (TELEGRAM_API_ID/TELEGRAM_API_HASH) или из
+    server.env локального Bot API. (None, None) — не найдены."""
+    try:
+        import secrets_local
+        if getattr(secrets_local, "TELEGRAM_API_ID", None) and getattr(secrets_local, "TELEGRAM_API_HASH", None):
+            return int(secrets_local.TELEGRAM_API_ID), secrets_local.TELEGRAM_API_HASH
+    except ImportError:
+        pass
+    try:
+        env = dict(l.strip().split("=", 1) for l in open(os.path.expanduser("~/telegram_bot_api/server.env")) if "=" in l)
+        return int(env["TELEGRAM_API_ID"]), env["TELEGRAM_API_HASH"]
+    except Exception:
+        return None, None
+
+
+def _telethon_installed():
+    try:
+        import telethon  # noqa: F401
+        return True
+    except ImportError:
+        return False
+
+
+# Историю берём из Telegram, если есть api_id/api_hash и Telethon; иначе работает прежняя история на диске
+HISTORY_FROM_TELEGRAM = telegram_api_credentials()[0] is not None and _telethon_installed()
+if not HISTORY_FROM_TELEGRAM:
+    os.makedirs(TOPIC_HISTORY_DIR, exist_ok=True)

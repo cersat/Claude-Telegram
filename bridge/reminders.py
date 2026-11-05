@@ -176,6 +176,16 @@ def _record_job_result(job, auth_failed):
             # у daily last_run_date остался сегодняшним — до завтра повторов не будет
 
 
+def _set_job_status(job, text):
+    """Только пометка «последний запуск» (для daily-джобы; одноразовая к этому моменту уже вынута из очереди)."""
+    stamp = core.now_local().strftime("%Y-%m-%d %H:%M")
+    with _jobs_lock() as jobs:
+        for jj in jobs:
+            if jj.get("id") == job["id"]:
+                jj["last_status"] = f"{text} ({stamp})"
+                break
+
+
 def scheduler_loop():
     """Фоновый цикл: каждые 20 секунд проверяет scheduled_jobs.json (одноразовые
     и ежедневные пробуждения, созданные через bot_scheduler_mcp_server.py) и для
@@ -222,7 +232,10 @@ def scheduler_loop():
                         topic_id=job.get("topic_id"), history_topic=job.get("topic_id"),
                         save_user_history=f"⏰ [Запланированное пробуждение] {job['prompt']}",
                     )
-                    _record_job_result(job, res == claude_run.AUTH_FAILED)
+                    if res == claude_run.LIMIT_HIT:
+                        _set_job_status(job, "пропущен: лимит Claude, повтор поставлен на время сброса")
+                    else:
+                        _record_job_result(job, res == claude_run.AUTH_FAILED)
                 except Exception as e:
                     print(f"[scheduler_loop] джоба {job['id']} упала, откатываю для повтора: {e}")
                     with _jobs_lock() as jobs2:

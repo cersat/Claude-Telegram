@@ -95,8 +95,21 @@ def get_history_file(topic_id=None):
         return consts.HISTORY_FILE
     return os.path.join(consts.TOPIC_HISTORY_DIR, f"history_{topic_id}.txt")
 
-def load_history(topic_id=None, limit=None):
-    """Загружает историю. limit=None — полная история, limit=N — последние N записей."""
+def _from_telegram(topic_id):
+    """История этой темы берётся у Telegram? Темы группы и личный чат с владельцем — да (если настроено); иначе файл."""
+    if not consts.HISTORY_FROM_TELEGRAM or topic_id is None:
+        return False
+    from bridge import tghistory
+    return tghistory.resolve(topic_id) is not None
+
+
+def load_history(topic_id=None, limit=None, exclude_id=None):
+    """Загружает историю. limit=None — по умолчанию, limit=N — последние N записей.
+    Если включена история из Telegram (consts.HISTORY_FROM_TELEGRAM) — читает её у Telegram (bridge/tghistory.py),
+    иначе из файла на диске. exclude_id — id сообщения, которое сейчас обрабатывается (оно уже в промпте)."""
+    if _from_telegram(topic_id):
+        from bridge import tghistory
+        return tghistory.get_lines(topic_id, limit or 60, exclude_id=exclude_id)
     try:
         lines = open(get_history_file(topic_id)).read().strip().split("\n")
         lines = [l for l in lines if l]
@@ -107,7 +120,9 @@ def load_history(topic_id=None, limit=None):
         return []
 
 def save_history(role, text, topic_id=None):
-    """Дописывает сообщение в конец файла истории."""
+    """Дописывает сообщение в конец файла истории (при истории из Telegram ничего не пишет: она уже в Telegram)."""
+    if _from_telegram(topic_id):
+        return
     hfile = get_history_file(topic_id)
     ts = core.now_local().strftime("%Y-%m-%d %H:%M")
     safe = text.replace("\n", " ").strip()
@@ -116,7 +131,14 @@ def save_history(role, text, topic_id=None):
         f.write(f"{prefix}|{ts}|{safe}\n")
 
 def reset_history(topic_id=None):
-    with open(get_history_file(topic_id), "w") as f:
-        f.write("")
+    """«Очистить историю»: на диске — обнуляет файл; при истории из Telegram сообщения удалить нельзя, поэтому
+    запоминается id, раньше которого история темы больше не читается."""
+    if _from_telegram(topic_id):
+        from bridge import tghistory
+        known = tghistory.index(topic_id)
+        tghistory.set_cutoff(topic_id, max(known + [tghistory.newest_id(topic_id)]))
+    else:
+        with open(get_history_file(topic_id), "w") as f:
+            f.write("")
     if topic_id is not None:
         reset_topic_session(topic_id)

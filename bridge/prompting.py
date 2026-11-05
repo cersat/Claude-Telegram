@@ -3,7 +3,7 @@
 import time
 import threading
 import json
-from bridge import consts, core, storage, tgapi
+from bridge import consts, core, limits, storage, tgapi
 
 
 # Дедупликация уведомления об окончании токенов
@@ -13,7 +13,7 @@ _last_token_limit_ts = 0
 def prepend_thinking(clean_response, elapsed_str):
     """Добавляет 'Думал Хс' курсивом в начало финального ответа.
     Курсив через сентинел-символы \\x01..\\x02, которые send_single превращает в <i>/</i>."""
-    if clean_response.startswith("You've hit your limit"):
+    if limits.is_limit_message(clean_response):
         global _last_token_limit_ts
         with _token_limit_lock:
             now = time.time()
@@ -143,9 +143,9 @@ def _format_history_line(line, compact=False):
         return f"{role}: {text}"
     return None
 
-def build_prompt(user_message, reply_to=None, topic_id=None):
+def build_prompt(user_message, reply_to=None, topic_id=None, current_msg_id=None):
     s = storage.load_settings()
-    history = storage.load_history(topic_id=topic_id)
+    history = storage.load_history(topic_id=topic_id, exclude_id=current_msg_id)
     style_note = "\nОтвечай подробно, с объяснениями." if s["style"] == "detailed" else ""
     parts = [SYSTEM_PROMPT + style_note, ""]
 

@@ -2,14 +2,20 @@
 """MCP-сервер (stdio) — коннектор для чтения ИСТОРИИ переписки других тем Telegram-бота
 (не путать с памятью Claude Code — это отдельный журнал диалогов, который ведёт bot.py).
 
-История живёт в TOPIC_HISTORY_DIR, один файл на тему: history_<topic_id>.txt, строки вида
-"U|время|текст" (пользователь) / "C|время|текст" (Claude). Имена тем — из topics.json."""
+История читается у самого Telegram (bridge/tghistory.py): по ID сообщений, которые бот индексирует по темам;
+строки вида "U|время|текст" (пользователь) / "C|время|текст" (Claude). Имена тем — из topics.json.
+Если api_id/api_hash или Telethon не настроены (consts.HISTORY_FROM_TELEGRAM = False), работает прежняя история
+на диске: TOPIC_HISTORY_DIR, один файл на тему history_<topic_id>.txt. Личные сообщения (ЛС) читаются так же, как темы:
+по ID из «ящика» бота."""
 
 import os
+import sys
 import json
 from mcp.server.mcpserver import MCPServer
 
 BRIDGE_DIR = os.path.dirname(os.path.abspath(__file__))
+sys.path.insert(0, BRIDGE_DIR)
+from bridge import consts, tghistory
 TOPIC_HISTORY_DIR = os.path.join(BRIDGE_DIR, "topic_histories")
 TOPICS_FILE = os.path.join(BRIDGE_DIR, "topics.json")
 
@@ -49,8 +55,7 @@ def _resolve_topic_id(topic):
     return None
 
 
-@mcp.tool()
-def history_list() -> str:
+def _history_list_disk() -> str:
     """📃 Список тем с историей переписки: название темы и число записей. Для чтения передай название
     (или номер, если у темы название неизвестно) в history_read."""
     topics = _load_topics()
@@ -88,8 +93,7 @@ def history_list() -> str:
     return "\n".join(lines) if lines else "Историй пока нет."
 
 
-@mcp.tool()
-def history_read(topic: str, limit: int = 50) -> str:
+def _history_read_disk(topic: str, limit: int = 50) -> str:
     """📃 Читает историю переписки указанной темы (имя темы, номер темы, topic_id или 'general').
     limit — сколько последних записей вернуть (по умолчанию 50)."""
     topic_id = _resolve_topic_id(topic)
@@ -103,6 +107,58 @@ def history_read(topic: str, limit: int = 50) -> str:
         return f"История для темы {topic_id!r} пуста или не найдена."
     if limit and limit > 0:
         lines = lines[-limit:]
+    return "\n".join(lines)
+
+
+
+def _resolve_telegram_topic(topic):
+    """Имя/номер/'general'/'лс' → topic_id бота ('group_1978', 'group_general', 'dm') или None."""
+    t = topic.strip()
+    low = t.lower()
+    if low in ("general", "общий", "главная", "группа"):
+        return "group_general"
+    if low in ("dm", "лс", "личка", "личные сообщения"):
+        return "dm"
+    if t.startswith("group_"):
+        return t
+    if t.isdigit():
+        return f"group_{t}"
+    for thread_id, name in _load_topics().items():
+        if name.lower() == low:
+            return f"group_{thread_id}"
+    if low.startswith("тема №") and low[len("тема №"):].strip().isdigit():
+        return f"group_{low[len('тема №'):].strip()}"
+    return None
+
+
+@mcp.tool()
+def history_list() -> str:
+    """📃 Список тем, историю которых можно прочитать: название темы и сколько её сообщений уже проиндексировано.
+    Для чтения передай название (или номер, если у темы название неизвестно) в history_read."""
+    if not consts.HISTORY_FROM_TELEGRAM:
+        return _history_list_disk()
+    lines = []
+    for thread_id, name in _load_topics().items():
+        n = len(tghistory.index(f"group_{thread_id}"))
+        lines.append(f"{name} — тема №{thread_id}, сообщений в индексе: {n}")
+    lines.append(f"General — сообщений в индексе: {len(tghistory.index('group_general'))}")
+    lines.append(f"Личные сообщения (ЛС) — сообщений в индексе: {len(tghistory.index('dm'))}")
+    return "\n".join(lines)
+
+
+@mcp.tool()
+def history_read(topic: str, limit: int = 50) -> str:
+    """📃 Читает историю переписки указанной темы (имя темы, номер темы, topic_id или 'general') прямо из Telegram.
+    limit — сколько последних записей вернуть (по умолчанию 50). Карточки инструментов бота в историю не входят."""
+    if not consts.HISTORY_FROM_TELEGRAM:
+        return _history_read_disk(topic, limit)
+    topic_id = _resolve_telegram_topic(topic)
+    if topic_id is None:
+        return f"Тема {topic!r} не найдена. Используй history_list чтобы посмотреть доступные."
+    lines = tghistory.get_lines(topic_id, limit if limit and limit > 0 else 50, name="mcp")
+    if not lines:
+        return (f"Записей в теме {topic_id!r} нет: она пуста, ещё не проиндексирована (индекс строится в фоне "
+                f"после запуска бота) или Telegram сейчас недоступен.")
     return "\n".join(lines)
 
 

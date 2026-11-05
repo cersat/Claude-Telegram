@@ -6,6 +6,7 @@ Stop hook: если есть responded.flag — отправляет после�
 import sys
 import json
 import os
+import re
 import requests
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
@@ -32,7 +33,7 @@ try:
 
     if last_response:
         # Проверяем лимит токенов
-        if last_response.startswith("You've hit your limit"):
+        if re.match(r"\s*You['’]ve hit your (?:\w+ )?limit", last_response, re.IGNORECASE):
             last_response = "⚠️ Токены закончились. Попробуй позже."
 
         # Разбиваем на части если > 4096 символов (лимит Telegram)

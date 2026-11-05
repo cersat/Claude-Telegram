@@ -50,6 +50,9 @@ def track_last_message(topic_id, msg_id):
     понять, что пользователь отредактировал именно ПОСЛЕДНЕЕ сообщение."""
     try:
         key = str(topic_id) if topic_id is not None else "private"
+        if consts.HISTORY_FROM_TELEGRAM and topic_id is not None:
+            from bridge import tghistory
+            tghistory.note(topic_id, msg_id)
         d = load_last_message_ids()
         d[key] = msg_id
         with open(consts.LAST_MSG_FILE, "w") as f:
@@ -84,6 +87,9 @@ def cache_sent_message(msg_id, text, chat_id=None, thread_id=None):
     sent_messages[msg_id] = text[:200]
     message_chat_thread[msg_id] = (chat_id, thread_id)
     track_chat_message(msg_id)
+    if consts.HISTORY_FROM_TELEGRAM:      # индекс id для истории из Telegram (bridge/tghistory.py)
+        from bridge import tghistory
+        tghistory.note(claude_run.chat_thread_to_topic_id(chat_id, thread_id), msg_id)
     # Чистим старые записи
     if len(sent_messages) > MAX_SENT_CACHE:
         oldest = sorted(sent_messages.keys())[:len(sent_messages) - MAX_SENT_CACHE]

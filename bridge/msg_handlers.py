@@ -63,7 +63,9 @@ def handle_forum_topic_created(msg):
 
     topic_id = f"group_{thread_id}"
     hfile = storage.get_history_file(topic_id)
-    if not os.path.exists(hfile):
+    if consts.HISTORY_FROM_TELEGRAM:
+        print(f"[TOPIC_CREATED] Тема «{topic_name}» (thread_id={thread_id}): история берётся из Telegram")
+    elif not os.path.exists(hfile):
         with open(hfile, "w") as f:
             f.write("")  # создаём пустой файл истории
         print(f"[TOPIC_CREATED] Создан файл истории для темы «{topic_name}» (thread_id={thread_id}): {hfile}")

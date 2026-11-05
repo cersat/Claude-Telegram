@@ -11,6 +11,7 @@ from bridge import cardview, consts, core, procs, prompting, storage, tgapi
 
 
 STOPPED_SENTINEL = "🛑 Остановлено пользователем."
+LIMIT_HIT = "__limit_hit__"      # run_claude_turn вернул это, если ход не состоялся из-за лимита (запрос повторится сам)
 AUTH_FAILED = "__auth_failed__"  # run_claude_turn вернул это, если ход не состоялся из-за ошибки входа
 
 
@@ -168,7 +169,7 @@ def run_claude_streaming(cmd, on_event=None, proc_key=None, extra_env=None):
 
 
 def ask_claude(user_message, image_path=None, reply_to=None, on_event=None, topic_id=None,
-                chat_id=None, thread_id=None, model=None):
+                chat_id=None, thread_id=None, model=None, current_msg_id=None):
     """Запускает Claude и возвращает ответ.
     Для топиков использует --resume чтобы продолжать сессию между сообщениями.
     chat_id/thread_id прокидываются в env subprocess'а (BOT_CHAT_ID/BOT_THREAD_ID/
@@ -219,7 +220,7 @@ def ask_claude(user_message, image_path=None, reply_to=None, on_event=None, topi
             ]
         else:
             # Первое сообщение или нет темы — полный промпт
-            prompt = prompting.build_prompt(effective_message, reply_to=reply_to, topic_id=topic_id)
+            prompt = prompting.build_prompt(effective_message, reply_to=reply_to, topic_id=topic_id, current_msg_id=current_msg_id)
             if session_id:
                 cmd = [
                     consts.CLAUDE_BIN, *permission_flags(),
@@ -245,7 +246,7 @@ def ask_claude(user_message, image_path=None, reply_to=None, on_event=None, topi
             sessions = storage.load_topic_sessions()
             sessions[str(topic_id)] = new_sid
             storage.save_topic_sessions(sessions)
-            prompt = prompting.build_prompt(effective_message, reply_to=reply_to, topic_id=topic_id)
+            prompt = prompting.build_prompt(effective_message, reply_to=reply_to, topic_id=topic_id, current_msg_id=current_msg_id)
             cmd = [
                 consts.CLAUDE_BIN, *permission_flags(),
                 "--model", model, *stream_flags,
@@ -316,7 +317,7 @@ def run_claude_turn(prompt, chat_id=None, thread_id=None, topic_id=None,
     t0 = time.time()
     with topic_lock, tgapi.chat_action(_cid, thread_id, "typing"):  # «печатает…» на время хода; плейсхолдер ⏳ остаётся
         response = ask_claude(prompt, image_path=image_path, reply_to=ask_reply_to, on_event=on_event,
-                               topic_id=topic_id, chat_id=_cid, thread_id=thread_id, model=model)
+                               topic_id=topic_id, chat_id=_cid, thread_id=thread_id, model=model, current_msg_id=react_msg_id)
     clear_placeholder()
     from bridge import authlogin  # локально: authlogin импортирует tgapi, который импортирует этот модуль
     if authlogin.is_auth_error(response):
@@ -325,6 +326,18 @@ def run_claude_turn(prompt, chat_id=None, thread_id=None, topic_id=None,
         if react_target:
             tgapi.set_reaction(react_chat_id, react_msg_id, None)
         return AUTH_FAILED
+    from bridge import limits
+    if limits.is_limit_message(response):
+        # лимит подписки исчерпан: вместо английского оригинала — понятное сообщение, а сам запрос
+        # повторится автоматически после сброса. В историю такой «ответ» не пишем.
+        reset_ts = limits.parse_reset(response)
+        queued, attempt = limits.schedule_retry(prompt, reset_ts, _cid, thread_id, topic_id)
+        print(f"[LIMIT] {response[:120]!r}; повтор {'поставлен' if queued else 'не поставлен'} (попытка {attempt})")
+        if limits.should_notify():
+            tgapi.send_single(limits.notice_text(reset_ts, queued, attempt), chat_id=_cid, thread_id=thread_id)
+        if react_target:
+            tgapi.set_reaction(react_chat_id, react_msg_id, None)
+        return LIMIT_HIT
     print(f"[FINAL_TEXT len={len(response) if response else 0}] {response[:200]!r}")
 
     if response == STOPPED_SENTINEL:
