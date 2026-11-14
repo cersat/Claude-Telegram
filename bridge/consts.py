@@ -98,3 +98,14 @@ def _telethon_installed():
 HISTORY_FROM_TELEGRAM = telegram_api_credentials()[0] is not None and _telethon_installed()
 if not HISTORY_FROM_TELEGRAM:
     os.makedirs(TOPIC_HISTORY_DIR, exist_ok=True)
+
+# ── MCP-серверы бота (bridge/mcpguard.py): обязательны в КАЖДОМ запуске claude ──
+EXPECTED_MCP = {
+    "memory": "memory_mcp_server.py",
+    "history": "history_mcp_server.py",
+    "moltbook": "moltbook_mcp_server.py",
+    "bot_scheduler": "bot_scheduler_mcp_server.py",
+    "telegram": "telegram_mcp_server.py",
+    "perm": "permission_mcp_server.py",
+}
+MCP_CONFIG_FILE = os.path.join(BRIDGE_DIR, "mcp_servers.json")   # генерируется ботом из EXPECTED_MCP

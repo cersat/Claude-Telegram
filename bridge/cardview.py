@@ -91,6 +91,23 @@ def format_tool_use(name, tool_input):
             "mcp__moltbook__moltbook_read_notification": "Отмечаю уведомление прочитанным",
             "mcp__moltbook__moltbook_read_all_notifications": "Отмечаю все уведомления прочитанными",
             "mcp__moltbook__moltbook_delete_post": "Удаляю пост",
+            "mcp__moltbook__moltbook_create_media_post": f"Публикую пост с медиа: {ti.get('title', '')}".rstrip(": "),
+            "mcp__moltbook__moltbook_submolts": "Список сабмолтов",
+            "mcp__moltbook__moltbook_submolt": f"Сабмолт: {ti.get('name', '')}".rstrip(": "),
+            "mcp__moltbook__moltbook_submolt_feed": f"Посты сабмолта: {ti.get('name', '')}".rstrip(": "),
+            "mcp__moltbook__moltbook_create_submolt": f"Создаю сабмолт: {ti.get('name', '')}".rstrip(": "),
+            "mcp__moltbook__moltbook_subscribe_submolt": f"Подписка на сабмолт: {ti.get('name', '')}".rstrip(": "),
+            "mcp__moltbook__moltbook_unsubscribe_submolt": f"Отписка от сабмолта: {ti.get('name', '')}".rstrip(": "),
+            "mcp__moltbook__moltbook_update_submolt": f"Настройки сабмолта: {ti.get('name', '')}".rstrip(": "),
+            "mcp__moltbook__moltbook_submolt_moderators": f"Модераторы сабмолта: {ti.get('name', '')}".rstrip(": "),
+            "mcp__moltbook__moltbook_add_moderator": f"Назначаю модератора: {ti.get('agent_name', '')}".rstrip(": "),
+            "mcp__moltbook__moltbook_remove_moderator": f"Снимаю модератора: {ti.get('agent_name', '')}".rstrip(": "),
+            "mcp__moltbook__moltbook_pin_post": "Закрепляю пост",
+            "mcp__moltbook__moltbook_unpin_post": "Открепляю пост",
+            "mcp__moltbook__moltbook_submolt_labels": f"Метки сабмолта: {ti.get('name', '')}".rstrip(": "),
+            "mcp__moltbook__moltbook_submolt_roles": f"Роли сабмолта: {ti.get('name', '')}".rstrip(": "),
+            "mcp__moltbook__moltbook_create_label": f"Создаю метку: {ti.get('label', '')}".rstrip(": "),
+            "mcp__moltbook__moltbook_attach_label": "Вешаю метку",
         }
         return f"🦞 {labels.get(name, _inline_code(name))}", None
     if name.startswith("mcp__claude_ai_"):

@@ -15,7 +15,7 @@ import json
 import signal
 from secrets_local import GROUP_CHAT_ID
 import memory_store
-from bridge import cb_handlers, claude_run, consts, core, dnscache, keyboards, lifecycle, logstamp, logtrim, msg_handlers, permui, pollstats, reminders, storage, tghistory, tgapi, upd_handlers
+from bridge import cb_handlers, claude_run, consts, core, dnscache, keyboards, lifecycle, logstamp, logtrim, mcpguard, msg_handlers, permui, pollstats, reminders, storage, tghistory, tgapi, upd_handlers
 
 
 def main():
@@ -33,6 +33,7 @@ def main():
         "commands": [{"command": "stop", "description": "Прервать текущее выполнение Claude"}]
     })
 
+    mcpguard.startup_check()   # MCP-серверы бота на месте: скрипты, регистрация, mcp_servers.json
     reminders.load_reminders_on_start()
     memory_store.ensure_memory_seed()
     reminders.seed_free_time_job()

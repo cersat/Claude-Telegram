@@ -21,14 +21,41 @@ def permission_flags():
     ask — всё, чего нет в CLAUDE_ALLOWED_TOOLS, Claude отдаёт тулу mcp__perm__approve, а тот спрашивает владельца
     кнопками в Telegram. --setting-sources project,local: пользовательский ~/.claude/settings.json пропускаем — в нём
     у многих разрешено всё (Bash(*), Edit(*)…) и вопросы просто не возникали бы; MCP-коннекторы живут в local-источнике."""
+    from bridge import mcpguard
+    mcp = mcpguard.config_flags()   # свои MCP-серверы бота в каждый запуск, независимо от регистрации в ~/.claude.json
     if storage.load_settings().get("permissions", "allow_all") != "ask":
-        return ["--dangerously-skip-permissions"]
-    return ["--setting-sources", "project,local",
+        return ["--dangerously-skip-permissions", *mcp]
+    return ["--setting-sources", "project,local", *mcp,
             "--permission-prompt-tool", "mcp__perm__approve",
             "--allowedTools=" + ",".join(consts.CLAUDE_ALLOWED_TOOLS)]
 
 
-def run_claude_streaming(cmd, on_event=None, proc_key=None, extra_env=None):
+_tls = threading.local()
+
+
+def run_claude_guarded(cmd, on_event=None, proc_key=None, extra_env=None):
+    """run_claude_streaming + страховка MCP: если при старте обязательный MCP-сервер не подключился, запуск
+    останавливается до начала хода, конфиг и регистрация чинятся (bridge/mcpguard.py), запуск повторяется (до 2 раз);
+    последняя попытка идёт как есть, с уведомлением владельца."""
+    from bridge import mcpguard
+    res = None
+    for attempt in range(3):
+        _tls.mcp_problems = None
+        res = run_claude_streaming(cmd, on_event=on_event, proc_key=proc_key, extra_env=extra_env,
+                                   abort_on_mcp_problem=attempt < 2)
+        problems = getattr(_tls, "mcp_problems", None)
+        if not problems:
+            return res
+        actions = mcpguard.repair(problems)
+        mcpguard.notify(f"⚠️ MCP-сервер не подключился: {', '.join(f'{n} ({st})' for n, st in problems.items())}. "
+                        f"Починил ({'; '.join(actions)}), "
+                        + ("запускаю заново." if attempt < 2 else "продолжаю как есть."))
+        if attempt < 2:
+            time.sleep(2)
+    return res
+
+
+def run_claude_streaming(cmd, on_event=None, proc_key=None, extra_env=None, abort_on_mcp_problem=False):
     """Запускает claude с --output-format stream-json и разбирает поток событий live.
     on_event(kind, payload) вызывается по мере поступления:
       kind="tool_start", payload={"id", "label", "full"}       — начался вызов инструмента;
@@ -87,6 +114,17 @@ def run_claude_streaming(cmd, on_event=None, proc_key=None, extra_env=None):
             # ходу верхнего уровня — не стримим чужую переписку как свою.
             continue
         etype = d.get("type")
+        if etype == "system" and d.get("subtype") == "init":
+            # Обязательные MCP-серверы бота должны быть подключены (или подключаться): иначе модель останется без
+            # инструментов, а --resume при отложенном вызове пропавшего сервера завершится кодом 1.
+            from bridge import mcpguard
+            problems = mcpguard.init_problems(d)
+            if problems:
+                print(f"[MCP] проблема с серверами: {problems}")
+                _tls.mcp_problems = problems
+                if abort_on_mcp_problem:
+                    proc.terminate()       # ход ещё не начался: останавливаем, чиним и повторяем запуск
+                    break
         if etype == "assistant":
             for block in d.get("message", {}).get("content", []):
                 btype = block.get("type")
@@ -236,7 +274,7 @@ def ask_claude(user_message, image_path=None, reply_to=None, on_event=None, topi
                 ]
 
         proc_key = procs.stream_key(topic_id)
-        response, returncode, stopped_by_user = run_claude_streaming(cmd, on_event=on_event, proc_key=proc_key, extra_env=extra_env)
+        response, returncode, stopped_by_user = run_claude_guarded(cmd, on_event=on_event, proc_key=proc_key, extra_env=extra_env)
 
         # Если --resume провалился (и это не ручная остановка) — сбрасываем сессию и повторяем с новой
         from bridge import authlogin
@@ -253,7 +291,7 @@ def ask_claude(user_message, image_path=None, reply_to=None, on_event=None, topi
                 "--session-id", new_sid,
                 "-p", prompt
             ]
-            response, returncode, stopped_by_user = run_claude_streaming(cmd, on_event=on_event, proc_key=proc_key, extra_env=extra_env)
+            response, returncode, stopped_by_user = run_claude_guarded(cmd, on_event=on_event, proc_key=proc_key, extra_env=extra_env)
 
         if topic_id is not None and returncode == 0:
             prompting.mark_prompt_version(topic_id)  # сессия теперь знает актуальные инструкции
