@@ -185,7 +185,9 @@ def _index_load():
         mt = None
     if _index_cache is None or mt != _index_mtime:
         raw = _load_json(consts.HISTORY_INDEX_FILE)
-        _index_cache = {k: (v if k.startswith("_meta") else sorted(set(v))) for k, v in raw.items()}
+        # _meta*: служебное состояние (словарь); испорченное (не словарь) сбрасываем — достройка начнёт этот блок заново
+        _index_cache = {k: ((v if isinstance(v, dict) else {}) if k.startswith("_meta") else sorted(set(v)))
+                        for k, v in raw.items()}
         _index_mtime = mt
     return _index_cache
 
